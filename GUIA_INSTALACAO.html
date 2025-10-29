@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia de Instalação - Processador de Provas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f7fa;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 30px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .step {
+            margin-bottom: 40px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border-left: 5px solid #667eea;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 50px;
+            font-size: 24px;
+            font-weight: bold;
+            margin-right: 15px;
+            float: left;
+        }
+
+        .step-content {
+            overflow: hidden;
+        }
+
+        .step h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+
+        .step p {
+            color: #666;
+            margin-bottom: 15px;
+        }
+
+        .code {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+            overflow-x: auto;
+        }
+
+        .highlight {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+
+        .checklist {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .checklist li {
+            padding: 10px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 5px;
+            border-left: 3px solid #28a745;
+        }
+
+        .checklist li:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .warning {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            color: #721c24;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            color: #666;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            background: #e9ecef;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .feature {
+            display: flex;
+            gap: 15px;
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .feature-icon {
+            font-size: 32px;
+        }
+
+        .feature-text h3 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .feature-text p {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Processador de Provas COREME</h1>
+            <p>Guia Completo de Instalação e Uso da Interface Web</p>
+        </div>
+
+        <div class="content">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h2>Verificar Requisitos</h2>
+                    <p>Antes de começar, certifique-se de ter:</p>
+                    <ul class="checklist">
+                        <li>Python 3.8 ou superior instalado</li>
+                        <li>Acesso à internet (apenas para instalar dependências)</li>
+                        <li>Navegador moderno (Chrome, Firefox, Edge ou Safari)</li>
+                        <li>Os arquivos do projeto exam-parser original</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h2>Extrair os Arquivos</h2>
+                    <p>Extraia o arquivo ZIP baixado e organize a estrutura de pastas:</p>
+                    <div class="code">projeto/
+├── exam-parser/              ← Projeto original
+│   ├── process_exam.py
+│   ├── template_upload_prova.xlsx
+│   └── ...
+└── exam-parser-web/          ← Interface web (nova)
+    ├── index.html
+    ├── server.py
+    ├── requirements.txt
+    └── ...</div>
+                    <div class="warning">
+                        <strong>⚠️ Importante:</strong> A pasta exam-parser-web deve estar no mesmo nível da pasta exam-parser original para funcionar corretamente.
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h2>Instalar Dependências</h2>
+                    
+                    <div class="tabs">
+                        <button class="tab active" onclick="showTab('windows')">Windows</button>
+                        <button class="tab" onclick="showTab('linux')">Linux/Mac</button>
+                    </div>
+
+                    <div id="windows" class="tab-content active">
+                        <p><strong>Método 1: Automático (Recomendado)</strong></p>
+                        <p>Simplesmente clique duas vezes no arquivo:</p>
+                        <div class="code">iniciar_windows.bat</div>
+                        <p>O script vai instalar tudo automaticamente!</p>
+                        
+                        <p style="margin-top: 20px;"><strong>Método 2: Manual</strong></p>
+                        <p>Abra o Prompt de Comando na pasta exam-parser-web e execute:</p>
+                        <div class="code">pip install -r requirements.txt</div>
+                    </div>
+
+                    <div id="linux" class="tab-content">
+                        <p><strong>Método 1: Automático (Recomendado)</strong></p>
+                        <p>Abra o terminal na pasta exam-parser-web e execute:</p>
+                        <div class="code">./iniciar_linux_mac.sh</div>
+                        
+                        <p style="margin-top: 20px;"><strong>Método 2: Manual</strong></p>
+                        <div class="code">pip3 install -r requirements.txt --break-system-packages</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <h2>Iniciar o Servidor</h2>
+                    <p>Com as dependências instaladas, inicie o servidor:</p>
+                    
+                    <div class="tabs">
+                        <button class="tab active" onclick="showTab2('win-server')">Windows</button>
+                        <button class="tab" onclick="showTab2('linux-server')">Linux/Mac</button>
+                    </div>
+
+                    <div id="win-server" class="tab-content active">
+                        <div class="code">python server.py</div>
+                        <p>Ou clique duas vezes em <strong>iniciar_windows.bat</strong></p>
+                    </div>
+
+                    <div id="linux-server" class="tab-content">
+                        <div class="code">python3 server.py</div>
+                        <p>Ou execute <strong>./iniciar_linux_mac.sh</strong></p>
+                    </div>
+
+                    <div class="success">
+                        <strong>✅ Servidor iniciado com sucesso quando ver:</strong>
+                        <div class="code" style="margin-top: 10px;">🌐 Acesse em seu navegador:
+   http://localhost:5000</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <h2>Acessar a Interface</h2>
+                    <p>Abra seu navegador e acesse:</p>
+                    <div class="code">http://localhost:5000</div>
+                    <p>Você verá a interface moderna do processador de provas!</p>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <h2>Usar o Sistema</h2>
+                    
+                    <div class="feature">
+                        <div class="feature-icon">📄</div>
+                        <div class="feature-text">
+                            <h3>Upload do PDF</h3>
+                            <p>Clique na área de upload ou arraste o arquivo PDF diretamente</p>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-icon">✍️</div>
+                        <div class="feature-text">
+                            <h3>Cole o Gabarito</h3>
+                            <p>Formato: "32-A, 33-B, 34-C" ou "32: A" (um por linha)</p>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-icon">🚀</div>
+                        <div class="feature-text">
+                            <h3>Processar</h3>
+                            <p>Clique em "Processar Prova" e aguarde alguns segundos</p>
+                        </div>
+                    </div>
+
+                    <div class="feature">
+                        <div class="feature-icon">📥</div>
+                        <div class="feature-text">
+                            <h3>Baixar Excel</h3>
+                            <p>Baixe o arquivo Excel gerado e revise o conteúdo</p>
+                        </div>
+                    </div>
+
+                    <div class="highlight">
+                        <strong>💡 Dica:</strong> Sempre revise o Excel gerado e adicione manualmente as imagens das questões quando necessário.
+                    </div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-content">
+                    <h2>🎉 Pronto!</h2>
+                    <p>Agora você pode processar provas de forma rápida e visual. O sistema:</p>
+                    <ul class="checklist">
+                        <li>Extrai automaticamente as questões do PDF</li>
+                        <li>Identifica as alternativas A-E (ou até J)</li>
+                        <li>Associa as respostas corretas do gabarito</li>
+                        <li>Gera o arquivo Excel no formato correto</li>
+                        <li>Detecta questões com imagens</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Desenvolvido com ❤️ para COREME</strong></p>
+            <p>Para mais informações, consulte o README.md ou INICIO_RAPIDO.txt</p>
+        </div>
+    </div>
+
+    <script>
+        function showTab(tab) {
+            document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById(tab).classList.add('active');
+        }
+
+        function showTab2(tab) {
+            const parent = event.target.parentElement.parentElement;
+            parent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            parent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            event.target.classList.add('active');
+            parent.querySelector('#' + tab).classList.add('active');
+        }
+    </script>
+</body>
+</html>

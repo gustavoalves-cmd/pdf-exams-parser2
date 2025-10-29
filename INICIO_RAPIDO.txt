@@ -1,0 +1,98 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                                                                  ║
+║       🚀 PROCESSADOR DE PROVAS COREME - INÍCIO RÁPIDO           ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+📋 INSTRUÇÕES RÁPIDAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WINDOWS:
+--------
+1. Clique duas vezes em: iniciar_windows.bat
+2. Aguarde abrir o navegador
+3. Pronto! Use a interface
+
+LINUX/MAC:
+----------
+1. Abra o terminal nesta pasta
+2. Execute: ./iniciar_linux_mac.sh
+3. Ou execute: python3 server.py
+4. Acesse: http://localhost:5000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📖 COMO USAR A INTERFACE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  UPLOAD DO PDF
+   • Clique na área de upload
+   • Ou arraste o PDF para a área
+   • Apenas PDFs com texto selecionável
+
+2️⃣  COLE O GABARITO
+   • Formato 1: 32-A, 33-B, 34-C
+   • Formato 2: 32: A (um por linha)
+
+3️⃣  PROCESSAR
+   • Clique em "Processar Prova"
+   • Aguarde alguns segundos
+
+4️⃣  BAIXAR EXCEL
+   • Clique em "Baixar Arquivo Excel"
+   • Revise e adicione imagens se necessário
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚠️  IMPORTANTE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ O PDF deve ter texto selecionável (não escaneado)
+✓ Imagens NÃO são extraídas automaticamente
+✓ Sempre revise o Excel gerado
+✓ Adicione imagens manualmente quando necessário
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 ESTRUTURA NECESSÁRIA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+projeto/
+├── exam-parser/              ← Projeto original
+│   ├── process_exam.py
+│   └── template_upload_prova.xlsx
+└── exam-parser-web/          ← Esta pasta
+    ├── index.html
+    ├── server.py
+    └── iniciar_windows.bat
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 SOLUÇÃO DE PROBLEMAS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Python não encontrado
+   → Instale Python 3.8+ de python.org
+
+❌ Erro ao instalar dependências
+   → Execute: pip install -r requirements.txt
+
+❌ Porta 5000 em uso
+   → Edite server.py e mude para porta 8080
+
+❌ Script não encontrado
+   → Verifique a estrutura de pastas acima
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 MAIS INFORMAÇÕES:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Leia o README.md para instruções detalhadas
+• Todos os dados são processados localmente
+• Nenhuma informação é enviada para internet
+• Código 100% open source
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✨ Desenvolvido para facilitar o trabalho da equipe COREME

@@ -1,5 +1,5 @@
-// app.js - Processador de Provas COREME (VERSÃO 4.0 - CORREÇÃO FINAL)
-// Detecta TODAS as 100 questões corretamente
+// app.js - Processador de Provas COREME (VERSÃO 4.1 - CORREÇÃO QUESTÃO 100)
+// Detecta TODAS as 100 questões corretamente + tratamento especial para Q100
 
 // Configurar PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -158,6 +158,7 @@ async function extractTextFromPDF(pdf, startPage = 1) {
     const numPages = pdf.numPages;
     
     console.log(`📖 Extraindo texto de ${numPages} páginas (começando da página ${startPage})...`);
+    console.log(`📊 Total de páginas a processar: ${numPages - startPage + 1}`);
     
     for (let i = startPage; i <= numPages; i++) {
         const page = await pdf.getPage(i);
@@ -176,12 +177,22 @@ async function extractTextFromPDF(pdf, startPage = 1) {
             lastY = item.transform[5];
         });
         
+        // Log especial para últimas 3 páginas
+        if (i >= numPages - 2) {
+            console.log(`📄 Página ${i} (últimas páginas): ${pageText.length} caracteres`);
+            console.log(`   Primeiros 200 chars: ${pageText.substring(0, 200)}`);
+            console.log(`   Contém "100."? ${pageText.includes('100.') ? 'SIM' : 'NÃO'}`);
+        }
+        
         fullText += '\n' + pageText + '\n';
         
         // Atualizar progresso
         const progress = 30 + (((i - startPage + 1) / (numPages - startPage + 1)) * 20);
         showProgress(progress, `Extraindo página ${i}/${numPages}...`);
     }
+    
+    console.log(`✅ Extração concluída: ${fullText.length} caracteres no total`);
+    console.log(`📊 Última página processada: ${numPages}`);
     
     return fullText;
 }
@@ -301,6 +312,68 @@ function parseQuestionsFinal(text, answers) {
     uniqueCandidatos.sort((a, b) => a.number - b.number);
     
     console.log('✅ Questões únicas (ordenadas):', uniqueCandidatos.length);
+    
+    // TRATAMENTO ESPECIAL: Se não encontrou questão 100, tentar métodos alternativos
+    const tem100 = uniqueCandidatos.some(c => c.number === 100);
+    if (!tem100) {
+        console.warn('⚠️ Questão 100 não encontrada! Tentando métodos alternativos...');
+        
+        // Método 1: Buscar "100." sem exigir quebra de linha antes
+        const pattern100_alt1 = /(\s|^)100\.\s+([^\n]{20,})/g;
+        let match100;
+        while ((match100 = pattern100_alt1.exec(cleaned)) !== null) {
+            console.log('🔍 Método 1: Encontrou "100." na posição', match100.index);
+            uniqueCandidatos.push({
+                number: 100,
+                startIndex: match100.index,
+                firstLine: match100[2].substring(0, 50)
+            });
+            break;
+        }
+        
+        // Método 2: Buscar no final do texto (últimos 3000 chars)
+        if (!tem100 && uniqueCandidatos.every(c => c.number !== 100)) {
+            const ultimosTresMil = cleaned.substring(Math.max(0, cleaned.length - 3000));
+            const pos100 = ultimosTresMil.indexOf('100.');
+            if (pos100 !== -1) {
+                const posGlobal = cleaned.length - 3000 + pos100;
+                console.log('🔍 Método 2: Encontrou "100." no final do texto, posição', posGlobal);
+                
+                // Extrair primeira linha
+                const texto100 = cleaned.substring(posGlobal);
+                const primeiraLinha = texto100.split('\n')[0].substring(4).trim(); // Remove "100."
+                
+                uniqueCandidatos.push({
+                    number: 100,
+                    startIndex: posGlobal,
+                    firstLine: primeiraLinha
+                });
+            }
+        }
+        
+        // Método 3: Se ainda não achou, buscar em todo o texto
+        if (uniqueCandidatos.every(c => c.number !== 100)) {
+            const pos100Global = cleaned.indexOf('100.');
+            if (pos100Global !== -1) {
+                console.log('🔍 Método 3: Encontrou "100." em qualquer posição:', pos100Global);
+                const texto100 = cleaned.substring(pos100Global);
+                const primeiraLinha = texto100.split('\n')[0].substring(4).trim();
+                
+                uniqueCandidatos.push({
+                    number: 100,
+                    startIndex: pos100Global,
+                    firstLine: primeiraLinha
+                });
+            } else {
+                console.error('❌ Questão 100 NÃO encontrada em nenhum método!');
+                console.log('📋 Últimos 500 chars do texto:', cleaned.substring(cleaned.length - 500));
+            }
+        }
+        
+        // Re-ordenar após adicionar Q100
+        uniqueCandidatos.sort((a, b) => a.number - b.number);
+        console.log('✅ Após busca especial Q100:', uniqueCandidatos.length, 'questões');
+    }
     
     // Validar se encontrou um número razoável de questões
     if (uniqueCandidatos.length < 50) {

@@ -1,5 +1,6 @@
-// app.js - Processador de Provas COREME (VERSÃO 4.1 - CORREÇÃO QUESTÃO 100)
-// Detecta TODAS as 100 questões corretamente + tratamento especial para Q100
+// app.js - Processador de Provas COREME (VERSÃO 4.1.1)
+// v4.1: TODAS as 100 questões detectadas corretamente + tratamento especial para Q100
+// v4.1.1: FIX - Coluna "alternativa" agora preenche corretamente com letra A-E do gabarito
 
 // Configurar PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -24,6 +25,18 @@ const statWarnings = document.getElementById('statWarnings');
 let currentPdfFile = null;
 let extractedText = '';
 
+// v4.1.1: Variáveis para correção da coluna "alternativa"
+let gabaritoParsed = []; // Array com gabarito parseado
+
+// Mapeamento número → letra (para coluna C do Excel)
+const numeroParaLetra = {
+    '1': 'A',
+    '2': 'B',
+    '3': 'C',
+    '4': 'D',
+    '5': 'E'
+};
+
 // Event Listeners
 uploadArea.addEventListener('click', () => pdfInput.click());
 uploadArea.addEventListener('dragover', handleDragOver);
@@ -31,6 +44,39 @@ uploadArea.addEventListener('dragleave', handleDragLeave);
 uploadArea.addEventListener('drop', handleDrop);
 pdfInput.addEventListener('change', handleFileSelect);
 processBtn.addEventListener('click', processExam);
+
+// v4.1.1: Listener para parsear gabarito ao inserir
+answerKeyInput.addEventListener('input', function(e) {
+    const gabarito = e.target.value.trim();
+    
+    if (gabarito) {
+        // Parse do gabarito: "1,2,3,4,5" ou "01-A, 02-B" → extrair apenas os números
+        // Tentar primeiro formato: "1,2,3,4,5" (números separados por vírgula)
+        if (/^\s*[\d,\s]+$/.test(gabarito)) {
+            // Formato: 1,2,3,4,5
+            gabaritoParsed = gabarito.split(',').map(n => n.trim()).filter(n => n);
+            console.log('📋 v4.1.1: Gabarito parseado (formato numérico):', gabaritoParsed.length, 'questões');
+        } else {
+            // Formato: 01-A, 02-B, 03-C → extrair as letras e converter para números
+            const matches = gabarito.match(/(\d+)\s*[-:]\s*([A-E])/gi);
+            if (matches) {
+                const letterToNumber = { 'A': '1', 'B': '2', 'C': '3', 'D': '4', 'E': '5' };
+                gabaritoParsed = matches.map(m => {
+                    const letra = m.match(/[A-E]/i)[0].toUpperCase();
+                    return letterToNumber[letra];
+                });
+                console.log('📋 v4.1.1: Gabarito parseado (formato letra):', gabaritoParsed.length, 'questões');
+            }
+        }
+        
+        if (gabaritoParsed.length > 0) {
+            console.log('🔢 Primeiras 10:', gabaritoParsed.slice(0, 10).join(','));
+            console.log('🔢 Últimas 10:', gabaritoParsed.slice(-10).join(','));
+        }
+    } else {
+        gabaritoParsed = [];
+    }
+});
 
 // Drag & Drop handlers
 function handleDragOver(e) {
@@ -576,31 +622,38 @@ async function generateExcel(questions) {
         'F': 6, 'G': 7, 'H': 8, 'I': 9, 'J': 10
     };
     
-    const data = questions.map(q => ({
-        'numero': q.numero,
-        'questao': q.enunciado,
-        'alternativa_correta': letterToNumber[q.resposta_correta] || null,
-        'alternativa1': q.alternativa_a || null,
-        'alternativa2': q.alternativa_b || null,
-        'alternativa3': q.alternativa_c || null,
-        'alternativa4': q.alternativa_d || null,
-        'alternativa5': q.alternativa_e || null,
-        'alternativa6': q.alternativa_f || null,
-        'alternativa7': q.alternativa_g || null,
-        'alternativa8': q.alternativa_h || null,
-        'alternativa9': q.alternativa_i || null,
-        'alternativa10': q.alternativa_j || null
-    }));
+    const data = questions.map(q => {
+        // v4.1.1: Adicionar coluna "alternativa" com letra do gabarito
+        const gabaritoNumero = gabaritoParsed[q.numero - 1] || '';
+        const gabaritoLetra = numeroParaLetra[gabaritoNumero] || '';
+        
+        return {
+            'numero': q.numero,
+            'questao': q.enunciado,
+            'alternativa': gabaritoLetra, // ✅ NOVA COLUNA com letra A-E
+            'alternativa_correta': letterToNumber[q.resposta_correta] || null,
+            'alternativa1': q.alternativa_a || null,
+            'alternativa2': q.alternativa_b || null,
+            'alternativa3': q.alternativa_c || null,
+            'alternativa4': q.alternativa_d || null,
+            'alternativa5': q.alternativa_e || null,
+            'alternativa6': q.alternativa_f || null,
+            'alternativa7': q.alternativa_g || null,
+            'alternativa8': q.alternativa_h || null,
+            'alternativa9': q.alternativa_i || null,
+            'alternativa10': q.alternativa_j || null
+        };
+    });
     
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data, {
-        header: ['numero', 'questao', 'alternativa_correta', 
+        header: ['numero', 'questao', 'alternativa', 'alternativa_correta', 
                  'alternativa1', 'alternativa2', 'alternativa3', 'alternativa4', 'alternativa5',
                  'alternativa6', 'alternativa7', 'alternativa8', 'alternativa9', 'alternativa10']
     });
     
     const colWidths = [
-        { wch: 8 },   { wch: 80 },  { wch: 10 },
+        { wch: 8 },   { wch: 80 },  { wch: 12 },  { wch: 10 },
         { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },
         { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 }
     ];
@@ -610,4 +663,16 @@ async function generateExcel(questions) {
     
     const fileName = currentPdfFile.name.replace('.pdf', '') + '_processado.xlsx';
     XLSX.writeFile(wb, fileName);
+    
+    // v4.1.1: Log de validação
+    const alternativasPreenchidas = data.filter(q => q.alternativa !== '').length;
+    console.log(`\n✅ v4.1.1: Excel gerado com sucesso!`);
+    console.log(`   - Total de questões: ${questions.length}`);
+    console.log(`   - Alternativas preenchidas: ${alternativasPreenchidas}/${questions.length}`);
+    
+    if (alternativasPreenchidas === 0) {
+        console.warn('⚠️ v4.1.1: Nenhuma alternativa foi preenchida! Verifique se o gabarito foi inserido.');
+    } else if (alternativasPreenchidas < questions.length) {
+        console.warn(`⚠️ v4.1.1: Apenas ${alternativasPreenchidas} alternativas preenchidas de ${questions.length}`);
+    }
 }

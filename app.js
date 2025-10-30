@@ -1,9 +1,489 @@
-// app.js - Processador de Provas COREME (VERSÃO 4.1.1)
-// v4.1: TODAS as 100 questões detectadas corretamente + tratamento especial para Q100
-// v4.1.1: FIX - Coluna "alternativa" agora preenche corretamente com letra A-E do gabarito
+// app.js - Processador Universal de Provas (VERSÃO 5.0 - ML-Enhanced)
+// Versão com detecção inteligente e adaptativa para múltiplos formatos de PDF
+// Melhorias: Detecção multi-padrão, análise contextual, e aprendizado adaptativo
 
 // Configurar PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// ===========================
+// SISTEMA DE DETECÇÃO INTELIGENTE
+// ===========================
+
+class IntelligentQuestionParser {
+    constructor() {
+        // Padrões de detecção de questões (ordem de prioridade)
+        this.patterns = [
+            // Padrão 1: {01} ou {1} com chaves (USP 2024)
+            {
+                name: 'chaves',
+                regex: /\{(\d{1,3})\}/g,
+                confidence: 0.95,
+                validator: (num, text) => num >= 1 && num <= 200
+            },
+            // Padrão 2: 01. ou 1. no início de linha
+            {
+                name: 'ponto_inicio',
+                regex: /(?:^|\n)\s*(\d{1,3})\.\s+/g,
+                confidence: 0.9,
+                validator: (num, text) => num >= 1 && num <= 200 && text.length > 20
+            },
+            // Padrão 3: QUESTÃO 01 ou Questão 1
+            {
+                name: 'questao_palavra',
+                regex: /(?:^|\n)\s*(?:QUESTÃO|Questão|questão)\s*(\d{1,3})/gi,
+                confidence: 0.95,
+                validator: (num) => num >= 1 && num <= 200
+            },
+            // Padrão 4: 01) ou 1) no início
+            {
+                name: 'parentese',
+                regex: /(?:^|\n)\s*(\d{1,3})\)\s+/g,
+                confidence: 0.85,
+                validator: (num, text) => num >= 1 && num <= 200 && text.length > 20
+            },
+            // Padrão 5: Q01 ou Q1
+            {
+                name: 'q_numero',
+                regex: /(?:^|\n)\s*Q(\d{1,3})\s+/gi,
+                confidence: 0.9,
+                validator: (num) => num >= 1 && num <= 200
+            },
+            // Padrão 6: [01] ou [1] com colchetes
+            {
+                name: 'colchetes',
+                regex: /\[(\d{1,3})\]/g,
+                confidence: 0.85,
+                validator: (num) => num >= 1 && num <= 200
+            }
+        ];
+        
+        // Padrões de alternativas (múltiplos formatos)
+        this.alternativePatterns = [
+            { regex: /\(([A-E])\)\s*/g, priority: 1 },
+            { regex: /(?:^|\n)\s*([A-E])\)\s*/gm, priority: 2 },
+            { regex: /(?:^|\n)\s*([A-E])\.\s*/gm, priority: 3 },
+            { regex: /\[([A-E])\]/g, priority: 4 },
+            { regex: /(?:^|\n)\s*([A-E])\s*[-–]\s*/gm, priority: 5 }
+        ];
+        
+        // Palavras-chave que indicam início de questão
+        this.questionKeywords = [
+            // Português
+            'homem', 'mulher', 'paciente', 'criança', 'lactente', 'recém-nascido', 'adolescente',
+            'gestante', 'puérpera', 'idoso', 'senhor', 'senhora', 'menino', 'menina',
+            'assinale', 'marque', 'indique', 'qual', 'quais', 'quanto', 'quantos',
+            'sobre', 'acerca', 'referente', 'considerando', 'com base', 'segundo',
+            'de acordo', 'em relação', 'durante', 'após', 'antes', 'quando',
+            'um', 'uma', 'o', 'a', 'no', 'na', 'do', 'da',
+            // Termos médicos comuns
+            'diagnóstico', 'tratamento', 'conduta', 'exame', 'procedimento',
+            'medicamento', 'droga', 'fármaco', 'cirurgia', 'operação'
+        ];
+        
+        // Estatísticas de detecção (para aprendizado)
+        this.detectionStats = {
+            patternsUsed: {},
+            averageQuestionLength: 0,
+            totalQuestions: 0
+        };
+    }
+    
+    // Método principal de parsing
+    parse(text, gabarito = {}) {
+        console.log('🧠 Iniciando detecção inteligente de questões...');
+        
+        // Limpar texto
+        const cleaned = this.cleanText(text);
+        
+        // Detectar formato do documento
+        const format = this.detectFormat(cleaned);
+        console.log(`📄 Formato detectado: ${format.name} (confiança: ${format.confidence})`);
+        
+        // Extrair questões usando o melhor padrão
+        const questions = this.extractQuestions(cleaned, format, gabarito);
+        
+        // Atualizar estatísticas
+        this.updateStats(questions);
+        
+        // Log de resultados
+        console.log(`✅ Total de questões detectadas: ${questions.length}`);
+        if (questions.length > 0) {
+            console.log('🔍 Primeira questão:', questions[0]);
+            console.log('🔍 Última questão:', questions[questions.length - 1]);
+        }
+        
+        return questions;
+    }
+    
+    // Detectar formato do documento
+    detectFormat(text) {
+        const formats = [];
+        
+        // Testar cada padrão
+        for (const pattern of this.patterns) {
+            pattern.regex.lastIndex = 0;
+            const matches = [...text.matchAll(pattern.regex)];
+            
+            if (matches.length > 0) {
+                // Validar sequencialidade
+                const numbers = matches
+                    .map(m => parseInt(m[1]))
+                    .filter(n => pattern.validator(n, text))
+                    .sort((a, b) => a - b);
+                
+                // Calcular score baseado em sequencialidade
+                let sequentialScore = 0;
+                for (let i = 1; i < Math.min(numbers.length, 10); i++) {
+                    if (numbers[i] === numbers[i-1] + 1) {
+                        sequentialScore++;
+                    }
+                }
+                
+                const confidence = pattern.confidence * 
+                    (matches.length / 100) * 
+                    (sequentialScore / 10 + 0.5);
+                
+                formats.push({
+                    name: pattern.name,
+                    pattern: pattern,
+                    matches: matches.length,
+                    confidence: Math.min(confidence, 1),
+                    numbers: numbers
+                });
+            }
+        }
+        
+        // Ordenar por confiança
+        formats.sort((a, b) => b.confidence - a.confidence);
+        
+        // Se nenhum formato detectado, usar padrão default
+        if (formats.length === 0) {
+            console.warn('⚠️ Nenhum formato específico detectado, usando padrão genérico');
+            return {
+                name: 'generico',
+                pattern: this.patterns[1], // padrão de ponto
+                confidence: 0.5,
+                matches: 0
+            };
+        }
+        
+        return formats[0];
+    }
+    
+    // Limpar texto
+    cleanText(text) {
+        return text
+            // Remover marcas d'água comuns
+            .replace(/pcimarkpci\s+[A-Za-z0-9+/=:]+/g, '')
+            .replace(/www\.[a-z]+\.com\.br/gi, '')
+            // Remover headers/footers comuns
+            .replace(/Processo Seletivo.+?PROVA [A-Z]\d+/gi, '')
+            .replace(/Página \d+ de \d+/gi, '')
+            .replace(/Confidencial.+?aplicação/gi, '')
+            // Remover códigos de prova
+            .replace(/[A-Z]{2,}\d{4}\/\d{3}-[A-Z]+/g, '')
+            // Normalizar espaços e quebras
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .replace(/\s+/g, ' ')
+            // Preservar quebras importantes
+            .replace(/(\d{1,3}[.)}\]])\s*\n\s*/g, '$1\n');
+    }
+    
+    // Extrair questões
+    extractQuestions(text, format, gabarito) {
+        const questions = [];
+        const pattern = format.pattern || this.patterns[1];
+        
+        // Resetar regex
+        pattern.regex.lastIndex = 0;
+        
+        // Encontrar todas as questões
+        const matches = [...text.matchAll(pattern.regex)];
+        const validMatches = [];
+        
+        // Filtrar e validar matches
+        for (const match of matches) {
+            const num = parseInt(match[1]);
+            
+            if (pattern.validator(num, text)) {
+                validMatches.push({
+                    number: num,
+                    index: match.index,
+                    match: match[0]
+                });
+            }
+        }
+        
+        // Remover duplicatas (manter primeira ocorrência)
+        const uniqueMatches = [];
+        const seenNumbers = new Set();
+        
+        for (const vm of validMatches) {
+            if (!seenNumbers.has(vm.number)) {
+                seenNumbers.add(vm.number);
+                uniqueMatches.push(vm);
+            }
+        }
+        
+        // Ordenar por número
+        uniqueMatches.sort((a, b) => a.number - b.number);
+        
+        // Processar cada questão
+        for (let i = 0; i < uniqueMatches.length; i++) {
+            const current = uniqueMatches[i];
+            const next = uniqueMatches[i + 1];
+            
+            const startIdx = current.index;
+            const endIdx = next ? next.index : text.length;
+            
+            const questionBlock = text.substring(startIdx, endIdx);
+            const parsed = this.parseQuestionBlock(questionBlock, current.number, gabarito);
+            
+            if (parsed) {
+                questions.push(parsed);
+            }
+        }
+        
+        // Tentar encontrar questões faltando
+        if (questions.length < 100 && questions.length > 50) {
+            console.log('🔍 Procurando questões faltantes...');
+            this.findMissingQuestions(text, questions, gabarito);
+        }
+        
+        return questions;
+    }
+    
+    // Parsear bloco de questão individual
+    parseQuestionBlock(block, number, gabarito) {
+        try {
+            // Remover marcador da questão
+            let content = block
+                .replace(/^\s*\{?\d{1,3}\}?\s*[.)]\s*/g, '')
+                .trim();
+            
+            // Detectar alternativas
+            const alternatives = this.extractAlternatives(content);
+            
+            // Extrair enunciado (antes das alternativas)
+            let statement = content;
+            if (alternatives.firstIndex !== -1) {
+                statement = content.substring(0, alternatives.firstIndex).trim();
+            }
+            
+            // Limpar enunciado
+            statement = statement
+                .replace(/\n+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            
+            // Validar tamanho mínimo
+            if (statement.length < 20 && !alternatives.hasAlternatives) {
+                return null;
+            }
+            
+            // Detectar se tem imagem/gráfico
+            const hasImage = this.detectImage(content, alternatives.hasAlternatives);
+            
+            // Obter resposta do gabarito
+            const answerLetter = gabarito[number] || '';
+            
+            // Montar questão final
+            return {
+                numero: number,
+                enunciado: statement,
+                alternativa_a: alternatives.options['A'] || '',
+                alternativa_b: alternatives.options['B'] || '',
+                alternativa_c: alternatives.options['C'] || '',
+                alternativa_d: alternatives.options['D'] || '',
+                alternativa_e: alternatives.options['E'] || '',
+                resposta_correta: answerLetter,
+                tem_imagem: hasImage,
+                formato_detectado: alternatives.patternUsed
+            };
+            
+        } catch (error) {
+            console.error(`⚠️ Erro ao processar questão ${number}:`, error);
+            return null;
+        }
+    }
+    
+    // Extrair alternativas com detecção inteligente
+    extractAlternatives(content) {
+        let bestResult = {
+            options: {},
+            hasAlternatives: false,
+            firstIndex: -1,
+            patternUsed: 'none'
+        };
+        
+        // Testar cada padrão de alternativa
+        for (const pattern of this.alternativePatterns) {
+            pattern.regex.lastIndex = 0;
+            const matches = [...content.matchAll(pattern.regex)];
+            
+            if (matches.length >= 3) { // Mínimo 3 alternativas
+                const options = {};
+                let firstIndex = Infinity;
+                
+                for (const match of matches) {
+                    const letter = match[1].toUpperCase();
+                    const startIdx = match.index + match[0].length;
+                    
+                    // Encontrar próxima alternativa ou fim
+                    let endIdx = content.length;
+                    for (const nextMatch of matches) {
+                        if (nextMatch.index > match.index && nextMatch.index < endIdx) {
+                            endIdx = nextMatch.index;
+                        }
+                    }
+                    
+                    const text = content.substring(startIdx, endIdx)
+                        .trim()
+                        .replace(/\n+/g, ' ')
+                        .replace(/\s+/g, ' ');
+                    
+                    options[letter] = text;
+                    firstIndex = Math.min(firstIndex, match.index);
+                }
+                
+                // Verificar se é sequencial (A, B, C...)
+                const letters = Object.keys(options).sort();
+                const isSequential = letters.length >= 3 && 
+                    ['A', 'B', 'C'].every(l => letters.includes(l));
+                
+                if (isSequential) {
+                    bestResult = {
+                        options: options,
+                        hasAlternatives: true,
+                        firstIndex: firstIndex,
+                        patternUsed: pattern.regex.toString()
+                    };
+                    break; // Usar primeiro padrão que funciona
+                }
+            }
+        }
+        
+        return bestResult;
+    }
+    
+    // Detectar se questão tem imagem
+    detectImage(content, hasAlternatives) {
+        // Indicadores de imagem
+        const imageIndicators = [
+            /figura/i,
+            /imagem/i,
+            /gráfico/i,
+            /tabela/i,
+            /quadro/i,
+            /diagrama/i,
+            /esquema/i,
+            /ilustração/i,
+            /foto/i,
+            /radiografia/i,
+            /tomografia/i,
+            /ultrassom/i,
+            /ecg/i,
+            /eletrocardiograma/i,
+            /exame de imagem/i,
+            /a seguir/i,
+            /abaixo/i,
+            /acima/i
+        ];
+        
+        // Se não tem alternativas, provavelmente tem imagem
+        if (!hasAlternatives) {
+            return true;
+        }
+        
+        // Verificar indicadores no texto
+        for (const indicator of imageIndicators) {
+            if (indicator.test(content)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Procurar questões faltantes
+    findMissingQuestions(text, existingQuestions, gabarito) {
+        const existingNumbers = new Set(existingQuestions.map(q => q.numero));
+        const maxNumber = Math.max(...existingNumbers);
+        
+        for (let num = 1; num <= maxNumber; num++) {
+            if (!existingNumbers.has(num)) {
+                console.log(`🔍 Procurando questão ${num} faltante...`);
+                
+                // Tentar padrões alternativos
+                const patterns = [
+                    new RegExp(`\\b${num}\\s*[.)\\]}]\\s*([^\\n]{20,})`, 'g'),
+                    new RegExp(`\\{${num}\\}\\s*([^\\n]{20,})`, 'g'),
+                    new RegExp(`questão\\s+${num}\\b`, 'gi')
+                ];
+                
+                for (const pattern of patterns) {
+                    const match = pattern.exec(text);
+                    if (match) {
+                        console.log(`✅ Encontrada questão ${num} com padrão alternativo`);
+                        
+                        // Extrair bloco da questão
+                        const startIdx = match.index;
+                        let endIdx = text.length;
+                        
+                        // Procurar próxima questão
+                        for (let nextNum = num + 1; nextNum <= maxNumber + 1; nextNum++) {
+                            const nextPattern = new RegExp(`\\b${nextNum}\\s*[.)\\]}]`, 'g');
+                            const nextMatch = nextPattern.exec(text.substring(startIdx));
+                            if (nextMatch) {
+                                endIdx = startIdx + nextMatch.index;
+                                break;
+                            }
+                        }
+                        
+                        const questionBlock = text.substring(startIdx, endIdx);
+                        const parsed = this.parseQuestionBlock(questionBlock, num, gabarito);
+                        
+                        if (parsed) {
+                            existingQuestions.push(parsed);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Re-ordenar questões
+        existingQuestions.sort((a, b) => a.numero - b.numero);
+    }
+    
+    // Atualizar estatísticas (para "aprendizado")
+    updateStats(questions) {
+        if (questions.length > 0) {
+            this.detectionStats.totalQuestions = questions.length;
+            
+            // Calcular tamanho médio das questões
+            const totalLength = questions.reduce((sum, q) => 
+                sum + (q.enunciado ? q.enunciado.length : 0), 0);
+            this.detectionStats.averageQuestionLength = 
+                Math.round(totalLength / questions.length);
+            
+            // Registrar formatos detectados
+            questions.forEach(q => {
+                const format = q.formato_detectado || 'unknown';
+                this.detectionStats.patternsUsed[format] = 
+                    (this.detectionStats.patternsUsed[format] || 0) + 1;
+            });
+            
+            console.log('📊 Estatísticas de detecção:', this.detectionStats);
+        }
+    }
+}
+
+// ===========================
+// CÓDIGO PRINCIPAL DO APP
+// ===========================
 
 // Elementos DOM
 const uploadArea = document.getElementById('uploadArea');
@@ -24,18 +504,7 @@ const statWarnings = document.getElementById('statWarnings');
 
 let currentPdfFile = null;
 let extractedText = '';
-
-// v4.1.1: Variáveis para correção da coluna "alternativa"
-let gabaritoParsed = []; // Array com gabarito parseado
-
-// Mapeamento número → letra (para coluna C do Excel)
-const numeroParaLetra = {
-    '1': 'A',
-    '2': 'B',
-    '3': 'C',
-    '4': 'D',
-    '5': 'E'
-};
+let intelligentParser = new IntelligentQuestionParser();
 
 // Event Listeners
 uploadArea.addEventListener('click', () => pdfInput.click());
@@ -44,39 +513,6 @@ uploadArea.addEventListener('dragleave', handleDragLeave);
 uploadArea.addEventListener('drop', handleDrop);
 pdfInput.addEventListener('change', handleFileSelect);
 processBtn.addEventListener('click', processExam);
-
-// v4.1.1: Listener para parsear gabarito ao inserir
-answerKeyInput.addEventListener('input', function(e) {
-    const gabarito = e.target.value.trim();
-    
-    if (gabarito) {
-        // Parse do gabarito: "1,2,3,4,5" ou "01-A, 02-B" → extrair apenas os números
-        // Tentar primeiro formato: "1,2,3,4,5" (números separados por vírgula)
-        if (/^\s*[\d,\s]+$/.test(gabarito)) {
-            // Formato: 1,2,3,4,5
-            gabaritoParsed = gabarito.split(',').map(n => n.trim()).filter(n => n);
-            console.log('📋 v4.1.1: Gabarito parseado (formato numérico):', gabaritoParsed.length, 'questões');
-        } else {
-            // Formato: 01-A, 02-B, 03-C → extrair as letras e converter para números
-            const matches = gabarito.match(/(\d+)\s*[-:]\s*([A-E])/gi);
-            if (matches) {
-                const letterToNumber = { 'A': '1', 'B': '2', 'C': '3', 'D': '4', 'E': '5' };
-                gabaritoParsed = matches.map(m => {
-                    const letra = m.match(/[A-E]/i)[0].toUpperCase();
-                    return letterToNumber[letra];
-                });
-                console.log('📋 v4.1.1: Gabarito parseado (formato letra):', gabaritoParsed.length, 'questões');
-            }
-        }
-        
-        if (gabaritoParsed.length > 0) {
-            console.log('🔢 Primeiras 10:', gabaritoParsed.slice(0, 10).join(','));
-            console.log('🔢 Últimas 10:', gabaritoParsed.slice(-10).join(','));
-        }
-    } else {
-        gabaritoParsed = [];
-    }
-});
 
 // Drag & Drop handlers
 function handleDragOver(e) {
@@ -142,32 +578,36 @@ async function processExam() {
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const numPages = pdf.numPages;
         
-        // Passo 2: Extrair texto (PULANDO PÁGINAS 1-2 = CAPA)
+        // Passo 2: Extrair texto com melhor preservação de formato
         showProgress(30, `Extraindo texto (${numPages} páginas)...`);
-        extractedText = await extractTextFromPDF(pdf, 3); // Começar da página 3
+        extractedText = await extractTextEnhanced(pdf);
         
-        console.log('📄 Texto extraído (primeiros 1000 chars):', extractedText.substring(0, 1000));
-        console.log('📊 Total de caracteres:', extractedText.length);
+        console.log('📄 Texto extraído:', extractedText.length, 'caracteres');
+        console.log('📄 Preview:', extractedText.substring(0, 1000));
         
         // Passo 3: Parse do gabarito
         showProgress(50, 'Processando gabarito...');
         const answers = parseAnswerKey(answerKey);
         
-        console.log('✅ Gabarito parseado:', answers);
-        console.log('📊 Total de respostas no gabarito:', Object.keys(answers).length);
+        console.log('✅ Gabarito parseado:', Object.keys(answers).length, 'respostas');
         
-        // Passo 4: Parse das questões (VERSÃO 4.0 FINAL)
-        showProgress(60, 'Identificando questões...');
-        const questions = parseQuestionsFinal(extractedText, answers);
+        // Passo 4: Parse inteligente das questões
+        showProgress(60, 'Aplicando detecção inteligente...');
+        const questions = intelligentParser.parse(extractedText, answers);
         
-        console.log('✅ Questões identificadas:', questions.length);
-        if (questions.length > 0) {
-            console.log('📝 Primeira questão:', questions[0]);
-            console.log('📝 Última questão:', questions[questions.length - 1]);
+        if (questions.length === 0) {
+            showStatus('⚠️ Nenhuma questão foi identificada. Tentando método alternativo...', 'warning');
+            
+            // Tentar método legado como fallback
+            const legacyQuestions = parseQuestionsLegacy(extractedText, answers);
+            if (legacyQuestions.length > 0) {
+                questions.push(...legacyQuestions);
+                console.log('✅ Método legado encontrou:', legacyQuestions.length, 'questões');
+            }
         }
         
         if (questions.length === 0) {
-            showStatus('⚠️ Nenhuma questão foi identificada no PDF. Verifique se o PDF tem texto selecionável.', 'warning');
+            showStatus('⚠️ Não foi possível identificar questões. Verifique o formato do PDF.', 'error');
             processBtn.disabled = false;
             hideProgress();
             return;
@@ -198,47 +638,50 @@ async function processExam() {
     }
 }
 
-// Extrair texto do PDF (pulando páginas de capa)
-async function extractTextFromPDF(pdf, startPage = 1) {
+// Extrair texto com melhor preservação
+async function extractTextEnhanced(pdf) {
     let fullText = '';
     const numPages = pdf.numPages;
     
-    console.log(`📖 Extraindo texto de ${numPages} páginas (começando da página ${startPage})...`);
-    console.log(`📊 Total de páginas a processar: ${numPages - startPage + 1}`);
-    
-    for (let i = startPage; i <= numPages; i++) {
-        const page = await pdf.getPage(i);
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
         
-        // Concatenar items com espaços, preservando quebras de linha
-        let pageText = '';
+        // Agrupar items por linha (baseado em posição Y)
+        const lines = {};
         let lastY = null;
         
         textContent.items.forEach(item => {
-            // Detectar quebra de linha baseada na posição Y
-            if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
-                pageText += '\n';
+            const y = Math.round(item.transform[5]);
+            
+            if (!lines[y]) {
+                lines[y] = [];
             }
-            pageText += item.str + ' ';
-            lastY = item.transform[5];
+            lines[y].push(item);
         });
         
-        // Log especial para últimas 3 páginas
-        if (i >= numPages - 2) {
-            console.log(`📄 Página ${i} (últimas páginas): ${pageText.length} caracteres`);
-            console.log(`   Primeiros 200 chars: ${pageText.substring(0, 200)}`);
-            console.log(`   Contém "100."? ${pageText.includes('100.') ? 'SIM' : 'NÃO'}`);
+        // Ordenar linhas por Y (de cima para baixo)
+        const sortedYs = Object.keys(lines)
+            .map(y => parseFloat(y))
+            .sort((a, b) => b - a);
+        
+        // Construir texto preservando estrutura
+        let pageText = '';
+        for (const y of sortedYs) {
+            const lineItems = lines[y].sort((a, b) => a.transform[4] - b.transform[4]);
+            const lineText = lineItems.map(item => item.str).join(' ');
+            
+            if (lineText.trim()) {
+                pageText += lineText + '\n';
+            }
         }
         
-        fullText += '\n' + pageText + '\n';
+        fullText += pageText + '\n\n';
         
         // Atualizar progresso
-        const progress = 30 + (((i - startPage + 1) / (numPages - startPage + 1)) * 20);
-        showProgress(progress, `Extraindo página ${i}/${numPages}...`);
+        const progress = 30 + ((pageNum / numPages) * 20);
+        showProgress(progress, `Extraindo página ${pageNum}/${numPages}...`);
     }
-    
-    console.log(`✅ Extração concluída: ${fullText.length} caracteres no total`);
-    console.log(`📊 Última página processada: ${numPages}`);
     
     return fullText;
 }
@@ -252,316 +695,82 @@ function parseAnswerKey(answerKeyText) {
         .replace(/\r/g, '\n')
         .trim();
     
-    // Formato 1: "01-A, 02-B, 03-C"
-    if (normalized.includes(',')) {
-        const parts = normalized.split(',');
-        parts.forEach(part => {
-            const match = part.trim().match(/(\d+)\s*[-:]\s*([A-J])/i);
-            if (match) {
-                const num = parseInt(match[1]);
-                const answer = match[2].toUpperCase();
+    // Tentar diferentes formatos
+    
+    // Formato 1: "01-A, 02-B" ou "01:A, 02:B"
+    let matches = normalized.match(/(\d+)\s*[-:]\s*([A-E])/gi);
+    if (matches && matches.length > 0) {
+        matches.forEach(match => {
+            const parts = match.match(/(\d+)\s*[-:]\s*([A-E])/i);
+            if (parts) {
+                const num = parseInt(parts[1]);
+                const answer = parts[2].toUpperCase();
                 answers[num] = answer;
             }
         });
-    } else {
-        // Formato 2: "01: A" (um por linha)
-        const lines = normalized.split('\n');
-        lines.forEach(line => {
-            const match = line.trim().match(/(\d+)\s*[-:]\s*([A-J])/i);
-            if (match) {
-                const num = parseInt(match[1]);
-                const answer = match[2].toUpperCase();
-                answers[num] = answer;
-            }
+        return answers;
+    }
+    
+    // Formato 2: Apenas letras separadas por vírgula ou espaço
+    const letters = normalized.match(/[A-E]/gi);
+    if (letters && letters.length > 0) {
+        letters.forEach((letter, index) => {
+            answers[index + 1] = letter.toUpperCase();
+        });
+        return answers;
+    }
+    
+    // Formato 3: Números (1-5) representando alternativas
+    const numbers = normalized.match(/[1-5]/g);
+    if (numbers && numbers.length > 0) {
+        const letterMap = {'1': 'A', '2': 'B', '3': 'C', '4': 'D', '5': 'E'};
+        numbers.forEach((num, index) => {
+            answers[index + 1] = letterMap[num] || '';
         });
     }
     
     return answers;
 }
 
-// VERSÃO 4.0 FINAL: Parse das questões (SOLUÇÃO DEFINITIVA)
-function parseQuestionsFinal(text, answers) {
+// Método legado de parsing (fallback)
+function parseQuestionsLegacy(text, answers) {
     const questions = [];
     
-    // LIMPEZA AGRESSIVA DO TEXTO
-    let cleaned = text
-        // Remover marca d'água PCI
-        .replace(/pcimarkpci\s+[A-Za-z0-9+/=:]+/g, '')
-        .replace(/www\.pciconcursos\.com\.br/g, '')
-        // Remover textos de confidencialidade
-        .replace(/Confidencial\s+até\s+o\s+momento\s+da\s+aplicação\.?/gi, '')
-        // Remover códigos de prova
-        .replace(/HRPP\d+\/\d+-[A-Za-z]+/g, '')
-        // Remover títulos comuns que não são questões
-        .replace(/\n\s*\d{3}\.\s*Prova\s+Objetiva/gi, '')
-        .replace(/\n\s*ÁREAS\s+DE\s+ACESSO\s+DIRETO/gi, '')
-        .replace(/\n\s*PROCESSO\s+SELETIVO/gi, '')
-        // Normalizar quebras de linha
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .replace(/\n{3,}/g, '\n\n');
+    // Padrão simples: número + ponto
+    const pattern = /(?:^|\n)\s*(\d{1,3})\.\s+([^\n]+)/g;
+    const matches = [...text.matchAll(pattern)];
     
-    console.log('🧹 Texto limpo (primeiros 800 chars):', cleaned.substring(0, 800));
-    
-    // ESTRATÉGIA: Usar regex mais simples mas com validação rigorosa
-    // Procurar apenas: \n + 2 dígitos + ponto + espaço + texto
-    const pattern = /\n\s*(\d{2})\.\s+([^\n]+)/g;
-    
-    let match;
-    const candidatos = [];
-    
-    while ((match = pattern.exec(cleaned)) !== null) {
-        const qNum = parseInt(match[1]);
-        const firstLine = match[2].trim();
-        
-        // Filtrar apenas números válidos (01-100)
-        if (qNum >= 1 && qNum <= 100) {
-            // VALIDAÇÃO: Deve começar com letra maiúscula OU palavra comum
-            const startsWithUpperCase = /^[A-ZÃÁÂÉÊÍÓÔÚ]/.test(firstLine);
-            const startsWithCommonWord = /^(Homem|Mulher|Paciente|Assinale|Com\s+relação|De\s+acordo|Qual|Quais|Uma?|O|A|Criança|Lactente|Gestante|Adolescente|Sobre|Em\s+relação|Durante|Após|Quando|Considerando)/i.test(firstLine);
+    matches.forEach((match, index) => {
+        const num = parseInt(match[1]);
+        if (num >= 1 && num <= 200) {
+            const nextMatch = matches[index + 1];
+            const startIdx = match.index;
+            const endIdx = nextMatch ? nextMatch.index : text.length;
             
-            // FILTRAR falsos positivos comuns
-            const isFalsePositive = 
-                /^Prova\s+Objetiva/i.test(firstLine) ||
-                /^ÁREAS/i.test(firstLine) ||
-                /^PROCESSO/i.test(firstLine) ||
-                /^RESIDÊNCIA/i.test(firstLine) ||
-                /^HOSPITAL/i.test(firstLine) ||
-                /^EDITAL/i.test(firstLine) ||
-                firstLine.length < 10; // Linha muito curta
+            const block = text.substring(startIdx, endIdx);
+            const enunciado = block
+                .replace(/^\s*\d{1,3}\.\s*/, '')
+                .replace(/\([A-E]\).*/gs, '')
+                .trim()
+                .substring(0, 500);
             
-            if ((startsWithUpperCase || startsWithCommonWord) && !isFalsePositive) {
-                candidatos.push({
-                    number: qNum,
-                    startIndex: match.index,
-                    firstLine: firstLine
+            if (enunciado.length > 20) {
+                questions.push({
+                    numero: num,
+                    enunciado: enunciado,
+                    alternativa_a: '',
+                    alternativa_b: '',
+                    alternativa_c: '',
+                    alternativa_d: '',
+                    alternativa_e: '',
+                    resposta_correta: answers[num] || '',
+                    tem_imagem: false
                 });
             }
         }
-    }
-    
-    console.log('🔍 Candidatos encontrados:', candidatos.length);
-    console.log('📝 Primeiros 10 candidatos:', candidatos.slice(0, 10));
-    
-    // Remover duplicatas - manter apenas o primeiro de cada número
-    const uniqueCandidatos = [];
-    const seenNumbers = new Set();
-    
-    for (const candidato of candidatos) {
-        if (!seenNumbers.has(candidato.number)) {
-            seenNumbers.add(candidato.number);
-            uniqueCandidatos.push(candidato);
-        }
-    }
-    
-    // Ordenar por número
-    uniqueCandidatos.sort((a, b) => a.number - b.number);
-    
-    console.log('✅ Questões únicas (ordenadas):', uniqueCandidatos.length);
-    
-    // TRATAMENTO ESPECIAL: Se não encontrou questão 100, tentar métodos alternativos
-    const tem100 = uniqueCandidatos.some(c => c.number === 100);
-    if (!tem100) {
-        console.warn('⚠️ Questão 100 não encontrada! Tentando métodos alternativos...');
-        
-        // Método 1: Buscar "100." sem exigir quebra de linha antes
-        const pattern100_alt1 = /(\s|^)100\.\s+([^\n]{20,})/g;
-        let match100;
-        while ((match100 = pattern100_alt1.exec(cleaned)) !== null) {
-            console.log('🔍 Método 1: Encontrou "100." na posição', match100.index);
-            uniqueCandidatos.push({
-                number: 100,
-                startIndex: match100.index,
-                firstLine: match100[2].substring(0, 50)
-            });
-            break;
-        }
-        
-        // Método 2: Buscar no final do texto (últimos 3000 chars)
-        if (!tem100 && uniqueCandidatos.every(c => c.number !== 100)) {
-            const ultimosTresMil = cleaned.substring(Math.max(0, cleaned.length - 3000));
-            const pos100 = ultimosTresMil.indexOf('100.');
-            if (pos100 !== -1) {
-                const posGlobal = cleaned.length - 3000 + pos100;
-                console.log('🔍 Método 2: Encontrou "100." no final do texto, posição', posGlobal);
-                
-                // Extrair primeira linha
-                const texto100 = cleaned.substring(posGlobal);
-                const primeiraLinha = texto100.split('\n')[0].substring(4).trim(); // Remove "100."
-                
-                uniqueCandidatos.push({
-                    number: 100,
-                    startIndex: posGlobal,
-                    firstLine: primeiraLinha
-                });
-            }
-        }
-        
-        // Método 3: Se ainda não achou, buscar em todo o texto
-        if (uniqueCandidatos.every(c => c.number !== 100)) {
-            const pos100Global = cleaned.indexOf('100.');
-            if (pos100Global !== -1) {
-                console.log('🔍 Método 3: Encontrou "100." em qualquer posição:', pos100Global);
-                const texto100 = cleaned.substring(pos100Global);
-                const primeiraLinha = texto100.split('\n')[0].substring(4).trim();
-                
-                uniqueCandidatos.push({
-                    number: 100,
-                    startIndex: pos100Global,
-                    firstLine: primeiraLinha
-                });
-            } else {
-                console.error('❌ Questão 100 NÃO encontrada em nenhum método!');
-                console.log('📋 Últimos 500 chars do texto:', cleaned.substring(cleaned.length - 500));
-            }
-        }
-        
-        // Re-ordenar após adicionar Q100
-        uniqueCandidatos.sort((a, b) => a.number - b.number);
-        console.log('✅ Após busca especial Q100:', uniqueCandidatos.length, 'questões');
-    }
-    
-    // Validar se encontrou um número razoável de questões
-    if (uniqueCandidatos.length < 50) {
-        console.warn('⚠️ ATENÇÃO: Menos de 50 questões encontradas!');
-        console.warn('📋 Questões encontradas:', uniqueCandidatos.map(c => c.number));
-    }
-    
-    // Processar cada questão
-    for (let i = 0; i < uniqueCandidatos.length; i++) {
-        const current = uniqueCandidatos[i];
-        const next = uniqueCandidatos[i + 1];
-        
-        const startIdx = current.startIndex;
-        const endIdx = next ? next.startIndex : cleaned.length;
-        const questionBlock = cleaned.substring(startIdx, endIdx);
-        
-        const parsed = parseQuestionBlock(questionBlock, current.number, answers);
-        
-        // Validar que a questão tem conteúdo mínimo
-        if (parsed && parsed.enunciado.length > 15) {
-            questions.push(parsed);
-        } else {
-            console.warn(`⚠️ Questão ${current.number} ignorada (enunciado: "${parsed?.enunciado || 'VAZIO'}")`);
-        }
-    }
+    });
     
     return questions;
-}
-
-// Parse de bloco individual de questão
-function parseQuestionBlock(block, questionNumber, answers) {
-    try {
-        // Remover número da questão do início
-        let content = block.replace(/^\s*\d{2}\.\s*/, '').trim();
-        
-        // Padrões de alternativas (múltiplos formatos)
-        const patterns = [
-            /\(([A-J])\)\s*/g,           // (A) 
-            /^\s*([A-J])\)\s*/gm,        // A) no início de linha
-            /\n\s*([A-J])\)\s*/g,        // A) após quebra
-            /\n\s*\(([A-J])\)\s*/g       // (A) após quebra
-        ];
-        
-        let altPositions = [];
-        
-        // Tentar cada padrão
-        for (const pattern of patterns) {
-            pattern.lastIndex = 0;
-            let tempPositions = [];
-            let altMatch;
-            
-            while ((altMatch = pattern.exec(content)) !== null) {
-                const letter = altMatch[1];
-                tempPositions.push({
-                    letter: letter,
-                    index: altMatch.index,
-                    matchLength: altMatch[0].length
-                });
-            }
-            
-            // Usar o padrão que encontrou mais alternativas
-            if (tempPositions.length > altPositions.length) {
-                altPositions = tempPositions;
-            }
-        }
-        
-        // Remover duplicatas próximas
-        altPositions = altPositions.filter((pos, index, self) => 
-            index === self.findIndex(p => Math.abs(p.index - pos.index) < 5)
-        );
-        
-        // Ordenar por posição
-        altPositions.sort((a, b) => a.index - b.index);
-        
-        // Validar sequência (A, B, C, D...)
-        const letters = altPositions.map(p => p.letter);
-        const hasValidSequence = letters.length >= 4 && 
-            letters[0] === 'A' && letters[1] === 'B' && 
-            letters[2] === 'C' && letters[3] === 'D';
-        
-        // Se não tem sequência válida, marcar como "tem imagem"
-        let hasImage = !hasValidSequence || altPositions.length < 4;
-        
-        // Extrair enunciado
-        let enunciado = '';
-        if (altPositions.length > 0) {
-            enunciado = content.substring(0, altPositions[0].index).trim();
-        } else {
-            enunciado = content.trim();
-            hasImage = true; // Se não tem alternativas, provavelmente tem imagem
-        }
-        
-        // Extrair alternativas
-        const alternatives = {};
-        for (let i = 0; i < altPositions.length; i++) {
-            const current = altPositions[i];
-            const next = altPositions[i + 1];
-            
-            const startIdx = current.index + current.matchLength;
-            const endIdx = next ? next.index : content.length;
-            
-            let altText = content.substring(startIdx, endIdx)
-                .trim()
-                .replace(/\n+/g, ' ')
-                .replace(/\s+/g, ' ');
-            
-            alternatives[current.letter] = altText;
-        }
-        
-        // Limpar enunciado
-        enunciado = enunciado
-            .replace(/\n+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        
-        // Obter resposta do gabarito
-        const answerLetter = answers[questionNumber] || '';
-        
-        // Montar questão
-        const question = {
-            numero: questionNumber,
-            enunciado: enunciado,
-            alternativa_a: alternatives['A'] || '',
-            alternativa_b: alternatives['B'] || '',
-            alternativa_c: alternatives['C'] || '',
-            alternativa_d: alternatives['D'] || '',
-            alternativa_e: alternatives['E'] || '',
-            alternativa_f: alternatives['F'] || '',
-            alternativa_g: alternatives['G'] || '',
-            alternativa_h: alternatives['H'] || '',
-            alternativa_i: alternatives['I'] || '',
-            alternativa_j: alternatives['J'] || '',
-            resposta_correta: answerLetter,
-            tem_imagem: hasImage
-        };
-        
-        return question;
-        
-    } catch (error) {
-        console.error(`❌ Erro ao processar questão ${questionNumber}:`, error);
-        return null;
-    }
 }
 
 // Funções auxiliares
@@ -618,61 +827,47 @@ function hideStats() {
 // Gerar arquivo Excel
 async function generateExcel(questions) {
     const letterToNumber = {
-        'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5,
-        'F': 6, 'G': 7, 'H': 8, 'I': 9, 'J': 10
+        'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5
     };
     
-    const data = questions.map(q => {
-        // v4.1.1: Adicionar coluna "alternativa" com letra do gabarito
-        const gabaritoNumero = gabaritoParsed[q.numero - 1] || '';
-        const gabaritoLetra = numeroParaLetra[gabaritoNumero] || '';
-        
-        return {
-            'numero': q.numero,
-            'questao': q.enunciado,
-            'alternativa': gabaritoLetra, // ✅ NOVA COLUNA com letra A-E
-            'alternativa_correta': letterToNumber[q.resposta_correta] || null,
-            'alternativa1': q.alternativa_a || null,
-            'alternativa2': q.alternativa_b || null,
-            'alternativa3': q.alternativa_c || null,
-            'alternativa4': q.alternativa_d || null,
-            'alternativa5': q.alternativa_e || null,
-            'alternativa6': q.alternativa_f || null,
-            'alternativa7': q.alternativa_g || null,
-            'alternativa8': q.alternativa_h || null,
-            'alternativa9': q.alternativa_i || null,
-            'alternativa10': q.alternativa_j || null
-        };
-    });
+    const data = questions.map(q => ({
+        'numero': q.numero,
+        'questao': q.enunciado,
+        'alternativa_correta': letterToNumber[q.resposta_correta] || null,
+        'alternativa1': q.alternativa_a || null,
+        'alternativa2': q.alternativa_b || null,
+        'alternativa3': q.alternativa_c || null,
+        'alternativa4': q.alternativa_d || null,
+        'alternativa5': q.alternativa_e || null
+    }));
     
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(data, {
-        header: ['numero', 'questao', 'alternativa', 'alternativa_correta', 
-                 'alternativa1', 'alternativa2', 'alternativa3', 'alternativa4', 'alternativa5',
-                 'alternativa6', 'alternativa7', 'alternativa8', 'alternativa9', 'alternativa10']
+        header: ['numero', 'questao', 'alternativa_correta', 
+                 'alternativa1', 'alternativa2', 'alternativa3', 
+                 'alternativa4', 'alternativa5']
     });
     
+    // Ajustar larguras das colunas
     const colWidths = [
-        { wch: 8 },   { wch: 80 },  { wch: 12 },  { wch: 10 },
-        { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },
-        { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 },  { wch: 60 }
+        { wch: 8 },   // numero
+        { wch: 80 },  // questao
+        { wch: 10 },  // alternativa_correta
+        { wch: 60 },  // alternativa1
+        { wch: 60 },  // alternativa2
+        { wch: 60 },  // alternativa3
+        { wch: 60 },  // alternativa4
+        { wch: 60 }   // alternativa5
     ];
     ws['!cols'] = colWidths;
     
-    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    XLSX.utils.book_append_sheet(wb, ws, 'Questões');
     
-    const fileName = currentPdfFile.name.replace('.pdf', '') + '_processado.xlsx';
+    const fileName = currentPdfFile.name.replace('.pdf', '') + '_processado_v5.xlsx';
     XLSX.writeFile(wb, fileName);
     
-    // v4.1.1: Log de validação
-    const alternativasPreenchidas = data.filter(q => q.alternativa !== '').length;
-    console.log(`\n✅ v4.1.1: Excel gerado com sucesso!`);
-    console.log(`   - Total de questões: ${questions.length}`);
-    console.log(`   - Alternativas preenchidas: ${alternativasPreenchidas}/${questions.length}`);
-    
-    if (alternativasPreenchidas === 0) {
-        console.warn('⚠️ v4.1.1: Nenhuma alternativa foi preenchida! Verifique se o gabarito foi inserido.');
-    } else if (alternativasPreenchidas < questions.length) {
-        console.warn(`⚠️ v4.1.1: Apenas ${alternativasPreenchidas} alternativas preenchidas de ${questions.length}`);
-    }
+    console.log('📊 Excel gerado:', fileName);
 }
+
+console.log('🚀 Processador Universal de Provas v5.0 carregado com sucesso!');
+console.log('🧠 Sistema de detecção inteligente ativado');

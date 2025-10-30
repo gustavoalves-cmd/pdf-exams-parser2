@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processador de Provas COREME - GitHub Pages</title>
+    
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- SheetJS para gerar Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 30px;
+            background: #f8f9fa;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f0f0;
+        }
+
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: #e8f5e9;
+        }
+
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            color: #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            color: #2e7d32;
+        }
+
+        .status.error {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+        }
+
+        .status.warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            color: #e65100;
+        }
+
+        .progress {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .progress.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .file-info {
+            display: none;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .stats {
+            display: none;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .stats.show {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .help {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .help strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .help ul {
+            margin-left: 20px;
+        }
+
+        .help li {
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 24px;
+            }
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Processador de Provas COREME</h1>
+            <p>Versão Client-Side - GitHub Pages</p>
+            <p style="font-size: 14px; margin-top: 10px; opacity: 0.8;">
+                ✨ 100% no navegador • Sem servidor • Seus dados não saem do seu computador
+            </p>
+        </div>
+
+        <div class="content">
+            <div class="help">
+                <strong>💡 Como usar:</strong>
+                <ul>
+                    <li><strong>1.</strong> Faça upload do PDF (arraste ou clique)</li>
+                    <li><strong>2.</strong> Cole o gabarito (ex: "01-A, 02-B, 03-C" ou "01: A" um por linha)</li>
+                    <li><strong>3.</strong> Clique em "Processar" e aguarde</li>
+                    <li><strong>4.</strong> Baixe o Excel gerado</li>
+                </ul>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📄</div>
+                <h3>Arraste o PDF aqui ou clique para selecionar</h3>
+                <p style="margin-top: 10px; color: #666;">Apenas PDFs com texto selecionável</p>
+                <input type="file" id="pdfInput" class="file-input" accept="application/pdf">
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <div class="file-name" id="fileName"></div>
+                <div class="file-size" id="fileSize"></div>
+            </div>
+
+            <div class="form-group">
+                <label for="answerKey">
+                    ✍️ Gabarito (Cole aqui as respostas corretas)
+                </label>
+                <textarea 
+                    id="answerKey" 
+                    rows="6" 
+                    placeholder="Exemplos aceitos:&#10;&#10;Formato 1: 01-A, 02-B, 03-C, 04-D&#10;&#10;Formato 2 (um por linha):&#10;01: A&#10;02: B&#10;03: C&#10;04: D"
+                ></textarea>
+            </div>
+
+            <button class="button" id="processBtn" disabled>
+                🚀 Processar Prova
+            </button>
+
+            <div class="progress" id="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+                <p style="text-align: center; margin-top: 10px; color: #666;" id="progressText"></p>
+            </div>
+
+            <div class="status" id="status"></div>
+
+            <div class="stats" id="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="statQuestions">0</div>
+                    <div class="stat-label">Questões Extraídas</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="statAnswers">0</div>
+                    <div class="stat-label">Respostas Associadas</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="statWarnings">0</div>
+                    <div class="stat-label">Avisos</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
